@@ -327,6 +327,13 @@ ErrorOr<void> fchmod(int fd, mode_t mode)
     return {};
 }
 
+ErrorOr<void> fsync(int fd)
+{
+    if (::fsync(fd) < 0)
+        return Error::from_syscall("fsync"sv, errno);
+    return {};
+}
+
 ErrorOr<void> fchown(int fd, uid_t uid, gid_t gid)
 {
     if (::fchown(fd, uid, gid) < 0)

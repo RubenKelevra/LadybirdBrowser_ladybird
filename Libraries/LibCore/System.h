@@ -103,6 +103,7 @@ ErrorOr<void> chdir(StringView path);
 ErrorOr<void> rmdir(StringView path);
 ErrorOr<int> mkstemp(Span<char> pattern);
 ErrorOr<void> fchmod(int fd, mode_t mode);
+ErrorOr<void> fsync(int fd);
 ErrorOr<void> rename(StringView old_path, StringView new_path);
 ErrorOr<void> unlink(StringView path);
 ErrorOr<void> utimensat(int fd, StringView path, struct timespec const times[2], int flag);

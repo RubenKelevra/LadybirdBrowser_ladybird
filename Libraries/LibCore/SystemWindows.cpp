@@ -86,6 +86,26 @@ ErrorOr<void> ftruncate(int handle, off_t length)
     return {};
 }
 
+ErrorOr<void> fsync(int handle)
+{
+    if (is_socket(handle))
+        return Error::from_errno(EINVAL);
+
+    BY_HANDLE_FILE_INFORMATION file_information = {};
+    if (GetFileInformationByHandle(to_handle(handle), &file_information)) {
+        if ((file_information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            // Windows does not support POSIX-style directory fsync on generic
+            // directory handles (FlushFileBuffers requires a specially opened
+            // directory handle). Treat this as a successful no-op.
+            return {};
+        }
+    }
+
+    if (!FlushFileBuffers(to_handle(handle)))
+        return Error::from_windows_error();
+    return {};
+}
+
 ErrorOr<struct stat> fstat(int handle)
 {
     struct stat st = {};
