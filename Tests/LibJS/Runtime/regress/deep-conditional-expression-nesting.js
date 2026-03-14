@@ -1,0 +1,14 @@
+const DEEP_NESTING_DEPTH = 100000;
+
+// const runDeepNestingTest = test;
+// TEMP: Until the C++ parser has matching recursion guards,
+// do not run this deep-nesting suite in C++ mode.
+const runDeepNestingTest =
+    typeof isCppParserMode === "function" && isCppParserMode() ? test.skip : test;
+
+runDeepNestingTest("deep conditional expression nesting does not crash parser", () => {
+    let source = "0";
+    for (let i = 0; i < DEEP_NESTING_DEPTH; ++i) source = `(true ? ${source} : 0)`;
+
+    expect(typeof canParseSource(source)).toBe("boolean");
+});

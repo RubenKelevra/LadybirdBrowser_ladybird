@@ -94,6 +94,11 @@ TESTJS_GLOBAL_FUNCTION(can_parse_source_with_cpp, canParseSourceWithCpp)
     return JS::Value(TRY(parse_with_cpp_mode(vm)));
 }
 
+TESTJS_GLOBAL_FUNCTION(is_cpp_parser_mode, isCppParserMode)
+{
+    return JS::Value(configured_parser_mode() == ParserMode::Cpp);
+}
+
 // Based on $262.evalScript
 TESTJS_GLOBAL_FUNCTION(evaluate_source, evaluateSource)
 {
