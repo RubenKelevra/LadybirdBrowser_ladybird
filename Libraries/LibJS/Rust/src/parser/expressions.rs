@@ -306,7 +306,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume();
                 let expression = self.parse_assignment_expression();
                 self.report_invalid_private_identifier_usage(&expression);
-                expressions.push(expression);
+                if !SYNTAX_ONLY {
+                    expressions.push(expression);
+                }
             }
             return self.expression(start, ExpressionKind::Sequence(expressions));
         }
@@ -508,6 +510,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     return (arrow, false);
                 }
                 let token = self.consume_and_check_identifier();
+                if SYNTAX_ONLY {
+                    let value = self.token_value(&token).to_vec();
+                    self.scope_collector
+                        .use_identifier_in_free_var_tracking(&value);
+                    return (self.syntax_only(start, ExpressionClass::Identifier), true);
+                }
                 let value = self.token_value(&token).to_vec();
                 let id = self.make_identifier(start, value.clone());
                 self.scope_collector
@@ -568,6 +576,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                         None
                     };
                     self.consume_token(TokenType::ParenClose);
+                    if SYNTAX_ONLY {
+                        return (self.syntax_only(start, ExpressionClass::Other), true);
+                    }
                     (
                         self.expression(
                             start,
@@ -658,6 +669,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                         );
                     }
                     let token = self.consume_and_check_identifier();
+                    if SYNTAX_ONLY {
+                        let value = self.token_value(&token).to_vec();
+                        self.scope_collector
+                            .use_identifier_in_free_var_tracking(&value);
+                        return (self.syntax_only(start, ExpressionClass::Identifier), true);
+                    }
                     let value = self.token_value(&token).to_vec();
                     let id = self.make_identifier(start, value.clone());
                     self.scope_collector
@@ -666,6 +683,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 } else if self.match_token(TokenType::EscapedKeyword) {
                     self.syntax_error("Keyword must not contain escaped characters");
                     let token = self.consume_and_check_identifier();
+                    if SYNTAX_ONLY {
+                        let value = self.token_value(&token).to_vec();
+                        self.scope_collector
+                            .use_identifier_in_free_var_tracking(&value);
+                        return (self.syntax_only(start, ExpressionClass::Identifier), true);
+                    }
                     let value = self.token_value(&token).to_vec();
                     let id = self.make_identifier(start, value.clone());
                     self.scope_collector
@@ -758,6 +781,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     Self::operator_associativity(tt),
                     forbidden,
                 );
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Other),
+                        ForbiddenTokens::none(),
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -780,6 +809,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume();
                 let new_forbidden = forbidden.forbid(&[TokenType::DoubleQuestionMark]);
                 let rhs = self.parse_expression(min_precedence, Associativity::Left, new_forbidden);
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Other),
+                        new_forbidden,
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -796,6 +831,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume();
                 let new_forbidden = forbidden.forbid(&[TokenType::DoubleQuestionMark]);
                 let rhs = self.parse_expression(min_precedence, Associativity::Left, new_forbidden);
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Other),
+                        new_forbidden,
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -813,6 +854,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 let new_forbidden =
                     forbidden.forbid(&[TokenType::DoubleAmpersand, TokenType::DoublePipe]);
                 let rhs = self.parse_expression(min_precedence, Associativity::Left, new_forbidden);
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Other),
+                        new_forbidden,
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -855,7 +902,6 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     // lhs_start. When the expression is parenthesized (e.g.
                     // `([a,b]) = ...`), lhs_start points to `(` but we need
                     // to re-lex from `[` to correctly synthesize the pattern.
-
                     let binding_pattern = self.synthesize_binding_pattern(lhs.range.start);
 
                     // Register synthesized identifiers with the scope collector so
@@ -865,8 +911,13 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     }
                     self.pattern_bound_names = saved_bound_names;
                     self.consume();
-                    let rhs =
-                        self.parse_expression(min_precedence, Associativity::Right, forbidden);
+                    let rhs = self.parse_expression(min_precedence, Associativity::Right, forbidden);
+                    if SYNTAX_ONLY {
+                        return (
+                            self.syntax_only(start, ExpressionClass::Other),
+                            ForbiddenTokens::none(),
+                        );
+                    }
                     return (
                         self.expression(
                             start,
@@ -893,6 +944,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 }
                 self.consume();
                 let rhs = self.parse_expression(min_precedence, Associativity::Right, forbidden);
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Other),
+                        ForbiddenTokens::none(),
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -913,6 +970,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume_token(TokenType::Colon);
                 let alternate =
                     self.parse_expression(PRECEDENCE_ASSIGNMENT, Associativity::Right, forbidden);
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Other),
+                        ForbiddenTokens::none(),
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -932,6 +995,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 if self.match_token(TokenType::PrivateIdentifier) {
                     // C++ uses rule_start (period position) for property identifiers.
                     let id = self.parse_private_identifier(start);
+                    if SYNTAX_ONLY {
+                        return (
+                            self.syntax_only(start, ExpressionClass::Member),
+                            ForbiddenTokens::none(),
+                        );
+                    }
                     let property = self.expression(start, ExpressionKind::PrivateIdentifier(id));
                     (
                         self.expression(
@@ -946,6 +1015,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     )
                 } else if self.match_identifier_name() {
                     let token = self.consume();
+                    if SYNTAX_ONLY {
+                        return (
+                            self.syntax_only(start, ExpressionClass::Member),
+                            ForbiddenTokens::none(),
+                        );
+                    }
                     let value = self.token_value(&token).to_vec();
                     // C++ uses rule_start (period position) for property identifiers.
                     let property = self.expression(
@@ -974,6 +1049,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume();
                 let property = self.parse_expression_any();
                 self.consume_token(TokenType::BracketClose);
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Member),
+                        ForbiddenTokens::none(),
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -1027,6 +1108,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     self.check_identifier_name_for_assignment_validity(&id.name, false);
                 }
                 self.consume();
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Update),
+                        ForbiddenTokens::none(),
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -1047,6 +1134,12 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     self.check_identifier_name_for_assignment_validity(&id.name, false);
                 }
                 self.consume();
+                if SYNTAX_ONLY {
+                    return (
+                        self.syntax_only(start, ExpressionClass::Update),
+                        ForbiddenTokens::none(),
+                    );
+                }
                 (
                     self.expression(
                         start,
@@ -1085,6 +1178,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 if let ExpressionKind::Identifier(ref id) = expression.inner {
                     self.check_identifier_name_for_assignment_validity(&id.name, false);
                 }
+                if SYNTAX_ONLY {
+                    return self.syntax_only(start, ExpressionClass::Update);
+                }
                 self.expression(
                     start,
                     ExpressionKind::Update {
@@ -1106,6 +1202,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 }
                 if let ExpressionKind::Identifier(ref id) = expression.inner {
                     self.check_identifier_name_for_assignment_validity(&id.name, false);
+                }
+                if SYNTAX_ONLY {
+                    return self.syntax_only(start, ExpressionClass::Update);
                 }
                 self.expression(
                     start,
@@ -1137,6 +1236,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     ForbiddenTokens::none(),
                 );
                 self.report_invalid_private_identifier_usage(&expression);
+                if SYNTAX_ONLY {
+                    return self.syntax_only(start, ExpressionClass::Other);
+                }
                 self.expression(
                     start,
                     ExpressionKind::Unary {
@@ -1168,6 +1270,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     && matches!(property.inner, ExpressionKind::PrivateIdentifier(_))
                 {
                     self.syntax_error("Private fields cannot be deleted");
+                }
+                if SYNTAX_ONLY {
+                    return self.syntax_only(start, ExpressionClass::Other);
                 }
                 self.expression(
                     start,
@@ -1235,6 +1340,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
 
         if self.match_token(TokenType::ParenOpen) {
             let arguments = self.parse_arguments();
+            if SYNTAX_ONLY {
+                return self.syntax_only(start, ExpressionClass::Other);
+            }
             self.expression(
                 start,
                 ExpressionKind::New(CallExpressionData {
@@ -1246,6 +1354,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 }),
             )
         } else {
+            if SYNTAX_ONLY {
+                return self.syntax_only(start, ExpressionClass::Other);
+            }
             self.expression(
                 start,
                 ExpressionKind::New(CallExpressionData {
@@ -1266,13 +1377,24 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
     pub(crate) fn parse_call_expression(&mut self, callee: Expression) -> Expression {
         let start = self.position();
         let arguments = self.parse_arguments();
-        // Check the actual callee expression kind, matching C++ which does
-        // is<Identifier>(callee) && callee.string() == "eval".
-        if let ExpressionKind::Identifier(ref id) = callee.inner
-            && id.name == utf16!("eval")
-        {
+        // Detect direct calls to eval: `eval(...)`.
+        // In full parsing mode, check the AST node. In SYNTAX_ONLY mode,
+        // identifiers are SyntaxOnly stubs so we check the source text.
+        let is_eval_call = if let ExpressionKind::Identifier(ref id) = callee.inner {
+            id.name == utf16!("eval")
+        } else if SYNTAX_ONLY && callee.inner.classify() == ExpressionClass::Identifier {
+            let s = callee.range.start.offset as usize;
+            let e = callee.range.end.offset as usize;
+            &self.source[s..e] == utf16!("eval")
+        } else {
+            false
+        };
+        if is_eval_call {
             self.scope_collector.set_contains_direct_call_to_eval();
             self.scope_collector.set_uses_this();
+        }
+        if SYNTAX_ONLY {
+            return self.syntax_only(start, ExpressionClass::Call);
         }
         self.expression(
             start,
@@ -1292,7 +1414,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
         while !self.match_token(TokenType::ParenClose) && !self.done() {
             let is_spread = self.eat(TokenType::TripleDot);
             let value = self.parse_assignment_expression();
-            arguments.push(CallArgument { value, is_spread });
+            if !SYNTAX_ONLY {
+                arguments.push(CallArgument { value, is_spread });
+            }
             if !self.match_token(TokenType::Comma) {
                 break;
             }
@@ -1415,6 +1539,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
             }
         }
 
+        if SYNTAX_ONLY {
+            return self.syntax_only(start, ExpressionClass::Other);
+        }
         self.expression(
             start,
             ExpressionKind::OptionalChain {
@@ -1459,6 +1586,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
 
         if is_yield_from || self.match_expression() || self.match_token(TokenType::Class) {
             let argument = self.parse_assignment_expression();
+            if SYNTAX_ONLY {
+                return self.syntax_only(start, ExpressionClass::Other);
+            }
             self.expression(
                 start,
                 ExpressionKind::Yield {
@@ -1498,6 +1628,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
             ForbiddenTokens::none(),
         );
         self.scope_collector.set_contains_await_expression();
+        if SYNTAX_ONLY {
+            return self.syntax_only(start, ExpressionClass::Other);
+        }
         self.expression(start, ExpressionKind::Await(Box::new(argument)))
     }
 
@@ -1512,14 +1645,16 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume();
                 let expression = self.parse_assignment_expression();
                 // C++ uses object expression start position for all ObjectProperty nodes.
-                properties.push(ObjectProperty {
-                    range: self.range_from(start),
-                    property_type: ObjectPropertyType::Spread,
-                    key: Box::new(expression),
-                    is_computed: false,
-                    value: None,
-                    is_method: false,
-                });
+                if !SYNTAX_ONLY {
+                    properties.push(ObjectProperty {
+                        range: self.range_from(start),
+                        property_type: ObjectPropertyType::Spread,
+                        key: Box::new(expression),
+                        is_computed: false,
+                        value: None,
+                        is_method: false,
+                    });
+                }
             } else {
                 let property = self.parse_object_property(start);
                 // https://tc39.es/ecma262/#sec-object-initializer-static-semantics-early-errors
@@ -1535,7 +1670,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     }
                     has_proto_setter = true;
                 }
-                properties.push(property);
+                if !SYNTAX_ONLY {
+                    properties.push(property);
+                }
             }
 
             if !self.match_token(TokenType::Comma) {
@@ -1703,7 +1840,7 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
         {
             let id = self.make_identifier(obj_start, kv.clone());
             self.scope_collector
-                .register_identifier(id.clone(), &id.name, None);
+                .register_identifier(id.clone(), kv, None);
             let value = self.expression(obj_start, ExpressionKind::Identifier(id));
             self.consume(); // consume '='
             // NB: Add a syntax error for CoverInitializedName. This error will
@@ -1733,9 +1870,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 let name_str = String::from_utf16_lossy(&kv);
                 self.syntax_error(&format!("'{name_str}' is a reserved keyword"));
             }
-            let id = self.make_identifier(obj_start, kv);
+            let id = self.make_identifier(obj_start, kv.clone());
             self.scope_collector
-                .register_identifier(id.clone(), &id.name, None);
+                .register_identifier(id.clone(), &kv, None);
             let value = self.expression(obj_start, ExpressionKind::Identifier(id));
             return ObjectProperty {
                 range: self.range_from(obj_start),
@@ -1930,7 +2067,9 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
         let mut elements: Vec<Option<Expression>> = Vec::new();
         while !self.match_token(TokenType::BracketClose) && !self.done() {
             if self.match_token(TokenType::Comma) {
-                elements.push(None);
+                if !SYNTAX_ONLY {
+                    elements.push(None);
+                }
                 self.consume();
                 continue;
             }
@@ -1938,11 +2077,16 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 self.consume();
                 let expression = self.parse_assignment_expression();
                 // C++ uses the array's rule_start ([ position) for SpreadExpression.
-                elements.push(Some(
-                    self.expression(start, ExpressionKind::Spread(Box::new(expression))),
-                ));
+                if !SYNTAX_ONLY {
+                    elements.push(Some(
+                        self.expression(start, ExpressionKind::Spread(Box::new(expression))),
+                    ));
+                }
             } else {
-                elements.push(Some(self.parse_assignment_expression()));
+                let elem = self.parse_assignment_expression();
+                if !SYNTAX_ONLY {
+                    elements.push(Some(elem));
+                }
             }
             if !self.match_token(TokenType::Comma) {
                 break;
@@ -1971,13 +2115,17 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
     ) -> Expression {
         while self.match_token(TokenType::TemplateLiteralStart) {
             let template = self.parse_template_literal(true);
-            expression = self.expression(
-                tag_start,
-                ExpressionKind::TaggedTemplateLiteral {
-                    tag: Box::new(expression),
-                    template_literal: Box::new(template),
-                },
-            );
+            if SYNTAX_ONLY {
+                expression = self.syntax_only(tag_start, ExpressionClass::Other);
+            } else {
+                expression = self.expression(
+                    tag_start,
+                    ExpressionKind::TaggedTemplateLiteral {
+                        tag: Box::new(expression),
+                        template_literal: Box::new(template),
+                    },
+                );
+            }
         }
         expression
     }
@@ -1990,7 +2138,7 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
         let mut raw_strings = Vec::new();
 
         let needs_leading_empty = !self.match_token(TokenType::TemplateLiteralString);
-        if needs_leading_empty {
+        if needs_leading_empty && !SYNTAX_ONLY {
             if is_tagged {
                 raw_strings.push(Utf16String::new());
             }
@@ -2015,14 +2163,26 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                 let raw = self.token_value(&token).to_vec();
                 if is_tagged {
                     let raw_value = raw_template_value(&raw);
-                    raw_strings.push(raw_value);
+                    if !SYNTAX_ONLY {
+                        raw_strings.push(raw_value);
+                    }
                     match self.process_template_escape_sequences(&raw) {
-                        Some(cooked) => expressions.push(
-                            self.expression(string_pos, ExpressionKind::StringLiteral(cooked)),
-                        ),
+                        Some(cooked) => {
+                            if !SYNTAX_ONLY {
+                                expressions.push(
+                                    self.expression(
+                                        string_pos,
+                                        ExpressionKind::StringLiteral(cooked),
+                                    ),
+                                );
+                            }
+                        }
                         // C++ uses rule_start (template literal start) for NullLiteral.
                         None => {
-                            expressions.push(self.expression(start, ExpressionKind::NullLiteral));
+                            if !SYNTAX_ONLY {
+                                expressions
+                                    .push(self.expression(start, ExpressionKind::NullLiteral));
+                            }
                         }
                     }
                 } else {
@@ -2030,16 +2190,21 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
                     if has_octal {
                         self.syntax_error("Octal escape sequence not allowed in template literal");
                     }
-                    expressions
-                        .push(self.expression(string_pos, ExpressionKind::StringLiteral(value)));
+                    if !SYNTAX_ONLY {
+                        expressions.push(
+                            self.expression(string_pos, ExpressionKind::StringLiteral(value)),
+                        );
+                    }
                 }
             } else if self.match_token(TokenType::TemplateLiteralExprStart) {
                 self.consume();
                 let expression = self.parse_expression_any();
-                expressions.push(expression);
+                if !SYNTAX_ONLY {
+                    expressions.push(expression);
+                }
                 self.consume_token(TokenType::TemplateLiteralExprEnd);
                 // After an expression, if no template string follows, insert empty.
-                if !self.match_token(TokenType::TemplateLiteralString) {
+                if !self.match_token(TokenType::TemplateLiteralString) && !SYNTAX_ONLY {
                     expressions.push(
                         self.expression(start, ExpressionKind::StringLiteral(Utf16String::new())),
                     );
@@ -2448,8 +2613,10 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
         self.flags.in_class_static_init_block = false;
 
         if self.match_token(TokenType::CurlyOpen) {
+            self.function_nesting_depth += 1;
             let (body, has_use_strict, insights) =
                 self.parse_function_body(is_async, false, is_simple);
+            self.function_nesting_depth -= 1;
 
             self.scope_collector.close_scope();
             self.pattern_bound_names = saved_pattern_bound_names;
@@ -2573,8 +2740,10 @@ impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
         self.flags.in_generator_function_context = in_generator_before;
         self.flags.await_expression_is_valid = await_before;
 
+        self.function_nesting_depth += 1;
         let (body, has_use_strict, mut insights) =
             self.parse_function_body(is_async, is_generator, parsed.is_simple);
+        self.function_nesting_depth -= 1;
         self.flags.allow_super_constructor_call = saved_allow_super_call;
         self.flags.allow_super_property_lookup = saved_allow_super_lookup;
 
