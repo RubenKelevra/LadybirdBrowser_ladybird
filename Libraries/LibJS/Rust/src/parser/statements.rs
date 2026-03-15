@@ -18,7 +18,7 @@ enum LocalForInit {
     Expression(Expression),
 }
 
-impl Parser<'_> {
+impl<'a, const SYNTAX_ONLY: bool> Parser<'a, SYNTAX_ONLY> {
     pub(crate) fn parse_statement(&mut self, allow_labelled_function: bool) -> Statement {
         let start = self.position();
         if self.should_abort_parsing() {
