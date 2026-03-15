@@ -1031,6 +1031,7 @@ fn dump_expression(expression: &Expression, state: &DumpState) {
             dump_expression(argument, &child_state(state, true));
         }
 
+        ExpressionKind::SyntaxOnly(_) => {}
         ExpressionKind::Error => {
             dump_node!(state, "ErrorExpression", &expression.range);
         }
@@ -1196,10 +1197,8 @@ fn dump_function(
     }
 
     print_node(&child_state(state, true), &color_label(state, "body"));
-    dump_statement(
-        &function_data.body,
-        &child_state(&child_state(state, true), true),
-    );
+    let body = function_data.body.expect_parsed();
+    dump_statement(body, &child_state(&child_state(state, true), true));
 }
 
 fn dump_class(
