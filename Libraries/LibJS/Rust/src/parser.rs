@@ -63,6 +63,7 @@ pub(crate) const PRECEDENCE_UNARY: i32 = 17;
 pub(crate) const PRECEDENCE_MEMBER: i32 = 19;
 // Conservative until we benchmark actual parser stack usage across targets.
 const MAX_PARSER_RECURSION_DEPTH: u32 = 1024;
+const RECURSION_LIMIT_ERROR_MESSAGE: &str = "Maximum parser recursion depth exceeded";
 
 /// Result of parsing a function's formal parameter list.
 pub struct ParsedParameters {
@@ -314,6 +315,7 @@ pub struct Parser<'a> {
     /// Recursive-descent parser nesting depth.
     parse_recursion_depth: u32,
     recursion_limit_exceeded: bool,
+    recursion_limit_error_position: Option<(u32, u32)>,
 }
 
 impl<'a> Parser<'a> {
@@ -364,6 +366,7 @@ impl<'a> Parser<'a> {
             deferred_regexes: Vec::new(),
             parse_recursion_depth: 0,
             recursion_limit_exceeded: false,
+            recursion_limit_error_position: None,
         }
     }
 
@@ -658,8 +661,12 @@ impl<'a> Parser<'a> {
             self.parse_recursion_depth -= 1;
             if !self.recursion_limit_exceeded {
                 self.recursion_limit_exceeded = true;
+                self.recursion_limit_error_position = Some((
+                    self.current_token.line_number,
+                    self.current_token.line_column,
+                ));
                 self.errors.push(ParseError {
-                    message: "Maximum parser recursion depth exceeded".to_string(),
+                    message: RECURSION_LIMIT_ERROR_MESSAGE.to_string(),
                     line: self.current_token.line_number,
                     column: self.current_token.line_column,
                 });
@@ -812,6 +819,7 @@ impl<'a> Parser<'a> {
         let state = self.saved_states.pop().expect("No saved state to restore");
         self.current_token = state.token;
         self.errors.truncate(state.errors_len);
+        self.ensure_recursion_limit_diagnostic_present();
         self.deferred_regexes.truncate(state.deferred_regexes_len);
         self.flags = state.flags;
         self.scope_collector.load_state(state.scope_collector_state);
@@ -821,6 +829,28 @@ impl<'a> Parser<'a> {
     pub(crate) fn discard_saved_state(&mut self) {
         self.saved_states.pop();
         self.lexer.discard_saved_state();
+    }
+
+    fn ensure_recursion_limit_diagnostic_present(&mut self) {
+        if !self.recursion_limit_exceeded {
+            return;
+        }
+        if self
+            .errors
+            .iter()
+            .any(|error| error.message == RECURSION_LIMIT_ERROR_MESSAGE)
+        {
+            return;
+        }
+        let (line, column) = self.recursion_limit_error_position.unwrap_or((
+            self.current_token.line_number,
+            self.current_token.line_column,
+        ));
+        self.errors.push(ParseError {
+            message: RECURSION_LIMIT_ERROR_MESSAGE.to_string(),
+            line,
+            column,
+        });
     }
 
     // === Token matching helpers ===
@@ -1237,7 +1267,10 @@ impl<'a> Parser<'a> {
     pub(crate) fn parse_directive(&mut self) -> (bool, Vec<Statement>) {
         let mut found_use_strict = false;
         let mut statements = Vec::new();
-        while !self.done() && !self.should_abort_parsing() && self.match_token(TokenType::StringLiteral) {
+        while !self.done()
+            && !self.should_abort_parsing()
+            && self.match_token(TokenType::StringLiteral)
+        {
             let raw_value = self.token_original_value(&self.current_token);
             let statement = self.parse_statement(false);
             statements.push(statement);
@@ -1456,6 +1489,44 @@ impl<'a> Parser<'a> {
             | TokenType::Comma => Associativity::Left,
             _ => Associativity::Right,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recursion_limit_error_survives_state_rollback() {
+        let source: Vec<u16> = Vec::new();
+        let mut parser = Parser::new(&source, ProgramType::Script);
+
+        parser.save_state();
+        parser.parse_recursion_depth = MAX_PARSER_RECURSION_DEPTH;
+
+        let result = parser.with_parser_recursion_guard(|_| ());
+        assert!(result.is_none());
+        assert!(parser.recursion_limit_exceeded);
+        assert_eq!(
+            parser
+                .errors
+                .iter()
+                .filter(|error| error.message == RECURSION_LIMIT_ERROR_MESSAGE)
+                .count(),
+            1
+        );
+
+        parser.load_state();
+
+        assert!(parser.recursion_limit_exceeded);
+        assert_eq!(
+            parser
+                .errors
+                .iter()
+                .filter(|error| error.message == RECURSION_LIMIT_ERROR_MESSAGE)
+                .count(),
+            1
+        );
     }
 }
 
